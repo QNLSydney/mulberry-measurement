@@ -3,6 +3,12 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# .pyenv file
+.python-version
+
+# ipython extras
+.ipynb_checkpoints/
+
 # C extensions
 *.so
 
@@ -64,6 +70,12 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# Sphinx documentation
+docs/_build/
+docs/_notebooks
+docs/api/generated/
+docs/_auto
+
 # PyBuilder
 target/
 
@@ -99,3 +111,25 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# Generated data
+*.csv
+*.data
+*.dat
+*.hdf5
+*.json
+
+# Temporary files
+*.md~
+*.py~
+tmp/
+
+docs/examples/data/*
+
+.idea/
+
+# Mac files
+.DS_Store
+
+# SPY stuff
+.spyproject
