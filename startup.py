@@ -49,10 +49,3 @@ mb_voltages = MBLockins(md, ("B", "C", "D", "E"), voltages, 3)
 
 #h5fmt = hdf5_format.HDF5Format()
 #qc.DataSet.default_formatter = h5fmt
-
-def do_field_sweeps(md, pairs, params):
-    for pair in pairs:
-        md.select(pair)
-        delay = TimeParam(1)
-        field_sweep(ami, params + [delay], ami.field(), -ami.field(), 1000)
-    md.clear()

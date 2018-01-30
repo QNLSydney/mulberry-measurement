@@ -205,10 +205,9 @@ def field_sweep(ami, voltages, start, stop, points):
     loop.run()
     return data
 
-def find_data(date, num):
-    date = str(date)
-    data_dir = os.path.join("data", date)
-    files = os.listdir(data_dir)
-    for file in files:
-        if re.match("#{:03}".format(num), file):
-            return os.path.join(data_dir, file)
+def do_field_sweeps(ami, md, pairs, params):
+    for pair in pairs:
+        md.select(pair)
+        delay = TimeParam(1)
+        field_sweep(ami, params + [delay], ami.field(), -ami.field(), 1000)
+    md.clear()
