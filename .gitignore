@@ -130,6 +130,3 @@ docs/examples/data/*
 
 # Mac files
 .DS_Store
-
-# SPY stuff
-.spyproject
