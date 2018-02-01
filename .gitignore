@@ -124,7 +124,9 @@ ENV/
 *.py~
 tmp/
 
+# Data files
 docs/examples/data/*
+data/
 
 .idea/
 
