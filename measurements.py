@@ -11,6 +11,7 @@ import requests
 import qcodes as qc
 from qcodes import Parameter, MultiParameter
 import os, re
+import warnings
 
 class TimeParam(Parameter):
     def __init__(self, waittime):
@@ -53,11 +54,27 @@ class FridgeTemps(MultiParameter):
         temps = temps.json()
         temps = [temps[therm] for therm in self.params]
         return tuple(temps)
-        
+
+class SourceDrainVoltages(Parameter):
+    def __init__(self, params):
+        self.params = params
+        super().__init__("v_sd",
+             label="V_sd",
+             unit="V")
+    
+    def get_raw(self):
+        return self.params[0].get()
+    
+    def set_raw(self, value):
+        for param in self.params:
+            param.set(value)
 
 class LockinResistance(Parameter):
-    def __init__(self, lockin, **kwargs):
+    def __init__(self, lockin, input_imp=None, current_scale=1, voltage_scale=1, **kwargs):
         self.lockin = lockin
+        self.input_imp = input_imp
+        self.current_scale = current_scale
+        self.voltage_scale = voltage_scale
         
         name = "{}_resistance".format(lockin.name)
         
@@ -70,8 +87,13 @@ class LockinResistance(Parameter):
     def _get_resistance(self):
         # Figure out instrument impedances
         output_imp = 50
-        input_imp = 1000 if self.lockin.input_gain() == 100e6 else 100
-        res = self.lockin.amplitude()/self.lockin.R()
+        if self.input_imp is None:
+            input_imp = 1000 if self.lockin.input_gain() == 100e6 else 100
+        else:
+            input_imp = self.input_imp
+        volt = self.lockin.amplitude()/self.voltage_scale
+        curr = self.lockin.R()/self.current_scale
+        res = volt/curr
         res = res - output_imp - input_imp
         return res
 
@@ -120,6 +142,19 @@ class LockinsComb(MultiParameter):
     
     def get_raw(self):
         return [param.get() for param in self.params]
+    
+class CurrentAmplifier(Parameter):
+    def __init__(self, param, gain):
+        self.param = param
+        self.gain = gain
+        super().__init__(name="{}_ithaco".format(param.full_name),
+              label="Current",
+              unit="A",
+              scale=gain,
+              snapshot_get=False)
+        
+    def get_raw(self):
+        return self.param.get()
 
 class MBLockins(MultiParameter):
     def __init__(self, md, pairs, params, waittime):
@@ -205,9 +240,75 @@ def field_sweep(ami, voltages, start, stop, points):
     loop.run()
     return data
 
-def do_field_sweeps(ami, md, pairs, params):
+def do_field_sweeps(md, pairs, params):
     for pair in pairs:
         md.select(pair)
+        sleep(10)
         delay = TimeParam(1)
-        field_sweep(ami, params + [delay], ami.field(), -ami.field(), 1000)
+        field_sweep(ami, params + [delay], ami.field(), -ami.field(), 2000)
     md.clear()
+
+def find_data(date, num):
+    date = str(date)
+    data_dir = os.path.join("data", date)
+    files = os.listdir(data_dir)
+    for file in files:
+        if re.match("#{:03}".format(num), file):
+            return os.path.join(data_dir, file)
+
+# Params:
+#   md: mulberry driver
+#   tg: top_gate voltage param
+#   V_sd: source-drain voltage param
+#   params: list of parameters to measure
+#   bg: (start, stop) tuple of topgate voltages
+#   iv: (start, stop) tuple of source-drain voltages
+#   plot_params: list of strings of parameters to live plot
+def do_bg_iv(md, tg_set, V_sd, states, params, tg, sd, 
+             plot_params=[], bg_step=0.02, iv_step=0.00004,
+             wait_time=5):
+    for state in states:
+        md.select(state)
+        tg_set.set(tg[0])
+        V_sd.set(sd[0])
+        sleep(wait_time)
+        
+        # Inner Loop (V_sd)
+        inner_loop = qc.Loop(V_sd.sweep(sd[0], sd[1], step=iv_step))
+        inner_loop = inner_loop.each(*params)
+        inner_loop = inner_loop.then(qc.Task(V_sd.set, sd[0]), qc.Wait(wait_time))
+        
+        # Outer Loop (tg)
+        loop = qc.Loop(tg_set.sweep(tg[0], tg[1], step=bg_step))
+        loop = loop.each(inner_loop)
+        data = loop.get_data_set()
+        
+        # Show each plot
+        plots = []
+        for param in plot_params:
+            param_data = getattr(data, param, None)
+            if param_data is None:
+                warnings.warn("Missing parameter {} not plotted".format(param),
+                              RuntimeWarning)
+                continue
+            plot = qc.QtPlot()
+            plot.add(param_data)
+            plots.append(plot)
+        # Define function to live update all plots
+        def upd():
+            for plot in plots:
+                plot.update()
+                
+        # Update plots at the end of each line
+        loop = loop.with_bg_task(upd)
+        
+        # Run the loop
+        loop.run()
+    
+    # Set parameters to zero
+    tg_set.set(0)
+    V_sd.set(0)
+    
+    # Clear mulberry at end
+    md.clear()
+        
