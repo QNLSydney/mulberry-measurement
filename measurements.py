@@ -292,7 +292,7 @@ def do_bg_iv(md, tg_set, V_sd, states, params, tg, sd,
                               RuntimeWarning)
                 continue
             plot = qc.QtPlot()
-            plot.add(param_data)
+            plot.add(param_data, name=param, title=param)
             plots.append(plot)
         # Define function to live update all plots
         def upd():
