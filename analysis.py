@@ -6,6 +6,7 @@ Created on Tue Jan 30 15:02:06 2018
 """
 
 import qcodes as qc
+import numpy as np
 from qcodes.plots.colors import color_cycle, colorscales
 import os, re
 
@@ -27,8 +28,61 @@ def format_plot(plot, left_axis):
     # Set the Axes
     pl.setLabel("left", left_axis[0], left_axis[1])
     pl.setLabel("bottom", "Perpendicular Field", "T")
+
+def plot_cooldown(datas):
+    """
+    Plot resistance of ohmics during cooldown
+    Datas is the datasets that make up the cooldown
+    """
     
-def plot_all(data):
+    # Calculate how many data points are in each array
+    lengths = []
+    for data in datas:
+        time = data.time
+        lengths.append(np.where(np.isnan(time))[0][0] - 1)
+    
+    # Make a new DataSet
+    new_data = qc.DataSet(location="data/Cooldown")
+    new_length = np.sum(lengths)
+    # And add new dataarrays for each dataarray in the original data
+    for d_arr in datas[0].arrays.values():
+        data_array = qc.DataArray(
+                name=d_arr.name,
+                full_name=d_arr.full_name, 
+                label=d_arr.full_name,
+                array_id=d_arr.array_id,
+                unit=d_arr.unit,
+                is_setpoint=d_arr.is_setpoint,
+                shape=(new_length, *d_arr.shape[1:]))
+        data_array.init_data()
+        new_data.add_array(data_array)
+    
+    # Then, update each of the set arrays
+    for key, d_arr in new_data.arrays.items():
+        d_arr.set_arrays = tuple(new_data.arrays[s_arr.name + "_set"] for s_arr in datas[0].arrays[key].set_arrays)
+        
+    # Then, fill in each item
+    cumsum = 0
+    for data, length in zip(datas, lengths):
+        for key, d_arr in data.arrays.items():
+            new_data.arrays[key][cumsum:cumsum+length] = d_arr.ndarray[0:length]
+        cumsum += length
+    
+    # We also need to make time keep counting upwards
+    cumsum = 0
+    offs = 0
+    for i, l in enumerate(lengths[:-1]):
+        cumsum += l
+        offs += new_data.time[l-1]
+        new_data.time[cumsum:cumsum+lengths[i+1]] += offs
+    
+    return new_data
+
+def plot_all_field_sweeps_comb(data):
+    """ 
+    Plot field sweeps under the condition that all sweeps are included
+    in a single data file
+    """
     plots = []
     for sw in ("B", "C", "D", "E"):
         for lockin in range(1, 4):
@@ -49,7 +103,11 @@ def plot_all(data):
             plot.save(filename="{}.png".format(name))
     return plots
 
-def plot_all_2(date, start_num):
+def plot_all_field_sweeps(date, start_num):
+    """
+    Plot field sweeps where data is split into multiple consecutive datasets.
+    This is the case when one DataSet is taken for each switch configuration
+    """
     plots = []
     for i, sw in enumerate(("B", "C", "D", "E")):
         data = qc.DataSet(location=find_data(date, start_num+i))
