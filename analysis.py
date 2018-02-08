@@ -9,6 +9,7 @@ import qcodes as qc
 import numpy as np
 from qcodes.plots.colors import color_cycle, colorscales
 import os, re
+from time import sleep
 
 def find_data(date, num):
     date = str(date)
@@ -17,6 +18,15 @@ def find_data(date, num):
     for file in files:
         if re.match("#{:03}".format(num), file):
             return os.path.join(data_dir, file)
+        
+def open_data(date, num):
+    loc = find_data(date, num)
+    if loc is None:
+        return None
+    data = qc.DataSet(location=loc)
+    data.read()
+    data.read_metadata()
+    return data
         
 def format_plot(plot, left_axis):
     # First, let's resize the window
@@ -109,7 +119,7 @@ def plot_all_field_sweeps(date, start_num):
     This is the case when one DataSet is taken for each switch configuration
     """
     plots = []
-    for i, sw in enumerate(("B", "C", "D", "E")):
+    for i, sw in enumerate(switches):
         data = qc.DataSet(location=find_data(date, start_num+i))
         data.read()
         for lockin in range(1, 5):
@@ -129,3 +139,27 @@ def plot_all_field_sweeps(date, start_num):
             plots.append(plot)
             plot.save(filename="{}_{}.png".format(sw, name))
     return plots
+
+def plot_update(date, num):
+    plots = []
+    data = open_data(date, num)
+    for lockin in range(1, 5):
+        plot = qc.QtPlot()
+        name = "SR860_{}_X".format(lockin)
+        name_res = "SR860_{}_resistance".format(lockin)
+        label = "V<sub>xy</sub>" if (lockin%2) == 1 else "V<sub>xx</sub>"
+        label = (label, "V")
+        tr = getattr(data, name_res, [])
+        if not tr:
+            tr = getattr(data, name, [])
+        else:
+            name = name_res
+            label = ("Resistance", "Ohms")
+        plot.add(tr, name=name, color=color_cycle[lockin-1])
+        format_plot(plot, label)
+        plots.append(plot)
+    while True:
+        data.read()
+        for plot in plots:
+            plot.update()
+        sleep(10)
