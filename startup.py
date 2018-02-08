@@ -56,16 +56,15 @@ V_sd_params = [lockin.sine_outdc for lockin in lockins[::2]]
 V_sd = SourceDrainVoltages(V_sd_params)
 
 # Lockin voltage/current measurements
-currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[:2]] + [lockins[1].X]
-currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[:2]] + [lockins[1].Y]
-currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[:2]] + [lockins[1].R]
+currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[::2]]
+currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[::2]]
+currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[::2]]
 dmm_currents = [CurrentAmplifier(dmm.volt, 1e6) for dmm in dmms]
-currents = [item for sublist in zip(currents_X, currents_Y, currents_R, dmm_currents) for item in sublist]
+currents = [item for sublist in zip(currents_X, currents_Y, currents_R) for item in sublist]
 resistances = [LockinResistance(lockin, 
                                 input_imp=20, 
                                 current_scale=1e6, 
                                 voltage_scale=100) for lockin in lockins[::2]]
-resistances.append(LockinResistance(lockins[1]))
 
 switched_resistances = []
 for switch in ("B", "C", "D", "E"):
