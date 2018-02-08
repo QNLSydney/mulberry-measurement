@@ -10,6 +10,7 @@ from collections import Iterable
 import requests
 import qcodes as qc
 from qcodes import Parameter, MultiParameter
+import math
 import os, re
 import warnings
 
@@ -109,39 +110,22 @@ class LockinResistances(MultiParameter):
     def get_raw(self):
         return [param.get() for param in self.params]
     
-class LockinSwitchResistances(MultiParameter):
-    def __init__(self, md, pairs, param, waittime):
+class MBSwitchedParam(Parameter):
+    def __init__(self, md, switch, param, waittime):
         self.param = param
-        self.pairs = pairs
+        self.switch = switch
         self.md = md
         self.waittime = waittime
-        super().__init__(name="Lockin_Switch_Resistances",
-            names=tuple("{}_{}".format(pair, param.name) for pair in pairs),
-            shapes=tuple((len(param.shapes),) for _ in pairs),
-            units=tuple(param.units[0] for _ in pairs),
+        super().__init__(name="{}_{}".format(switch, param.full_name),
+            label=param.label,
+            unit=param.unit,
             snapshot_get=False)
     
     def get_raw(self):
-        items = []
-        for pair in self.pairs:
-            self.md.select(pair)
+        if self.md.select.get_latest() != self.switch:
+            self.md.select(self.switch)
             sleep(self.waittime)
-            items.append(self.param.get())
-        self.md.clear()
-        return tuple(items)
-
-class LockinsComb(MultiParameter):
-    def __init__(self, params):
-        self.params = params
-        self.param_name = params[0].name
-        super().__init__(name="Lockins_{}".format(self.param_name),
-              names=tuple("{}".format(param.full_name) for param in self.params),
-              shapes=tuple(() for _ in self.params),
-              units=tuple(param.unit for param in self.params),
-              snapshot_get=False)
-    
-    def get_raw(self):
-        return [param.get() for param in self.params]
+        return self.param()
     
 class CurrentAmplifier(Parameter):
     def __init__(self, param, gain):
@@ -156,74 +140,22 @@ class CurrentAmplifier(Parameter):
     def get_raw(self):
         return self.param.get()
 
-class MBLockins(MultiParameter):
-    def __init__(self, md, pairs, params, waittime):
-        self.pairs = pairs
-        self.md = md
-        self.waittime = waittime
-        if not isinstance(params, Iterable):
-            params = (params,)
-        self.params = params
-        
-        shapes = []
-        names = []
-        units = []
-        for pair in pairs:
-            for param in params:
-                names.append("{}_{}".format(pair, param.full_name))
-                if isinstance(param, MultiParameter):
-                    shapes.append((len(param.shapes),))
-                    units.append(param.units)
-                else:
-                    shapes.append(())
-                    units.append(param.unit)
-        shapes = tuple(shapes)
-        names = tuple(names)
-        units = tuple(units)
-        
-        super().__init__(name="MB_Switched",
-            names=names,
-            shapes=shapes,
-            units=units,
-            snapshot_get=False)
-    
-    def get_raw(self):
-        items = []
-        i = 0
-        for pair in self.pairs:
-            self.md.select(pair)
-            sleep(self.waittime)
-            for param in self.params:
-                items.append(param.get())
-                i += 1
-        self.md.clear()
-        return tuple(items)
-    
-def gen_resistances_param(lockins):
-    params = [LockinResistance(lockin) for lockin in lockins]
-    
-    return LockinResistances(params)
-
-def meas_all(md, pairs, param):
-    lsr = MBLockins(md, pairs, param, 10)
-    m = qc.Measure(lsr)
-    data = m.get_data_set()
-    m.run()
-    return data
-
 def printer(data):
     def p():
         index = data.Still.last_saved_index
         temp = data.Still[index]
         print("@Temp: {}".format(temp))
         for switch in ("B", "C", "D", "E"):
-            d = data.__getattr__("{}_Lockin_Resistances".format(switch))[index]
-            print("\tSW {}: Thru: {:.2e} Ohms, 25um: {:.2e} Ohms, 50um: {:.2e} Ohms".format(switch, *d))
+            print("\tSW: {}".format(switch), end="")
+            for lockin in range(1, 4):
+                d = getattr(data, "{}_SR860_{}_resistance".format(switch, lockin))[index]
+                print("\t{}: {:.1f}Ω".format(lockin, d), end="")
+            print()
     return p
 
 def cooldown_loop(t, ft, resist, loops):
     loop = qc.Loop(t[0:loops:1])
-    loop = loop.each(t, ft, resist)
+    loop = loop.each(t, ft, *resist)
     data = loop.get_data_set()
     p = printer(data)
     loop.with_bg_task(p)
@@ -240,7 +172,7 @@ def field_sweep(ami, voltages, start, stop, points):
     loop.run()
     return data
 
-def do_field_sweeps(md, pairs, params):
+def do_field_sweeps(ami, md, pairs, params):
     for pair in pairs:
         md.select(pair)
         sleep(10)

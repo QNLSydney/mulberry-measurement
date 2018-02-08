@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 import qcodes as qc
-from qcodes.instrument.parameter import combine
 from qcodes.instrument_drivers.stanford_research import SR860
 from qcodes.instrument_drivers.american_magnetics import AMI430
 from qcodes.instrument_drivers.agilent import Agilent_34400A
@@ -46,9 +45,6 @@ station.add_component(ami)
 
 from measurements import *
 
-# Lockin resistance measurements
-resistances = gen_resistances_param(lockins[:3])
-lsr = LockinSwitchResistances(md, ("B", "C", "D", "E"), resistances, 10)
 ft = FridgeTemps("BlueFors_LD", 
      "https://qphys1114.research.ext.sydney.edu.au/therm_flask/BlueFors_LD/data/?current")
 t = TimeParam(60)
@@ -60,18 +56,26 @@ V_sd_params = [lockin.sine_outdc for lockin in lockins[::2]]
 V_sd = SourceDrainVoltages(V_sd_params)
 
 # Lockin voltage/current measurements
-currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[::2]]
-currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[::2]]
-currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[::2]]
+currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[:2]] + [lockins[1].X]
+currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[:2]] + [lockins[1].Y]
+currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[:2]] + [lockins[1].R]
 dmm_currents = [CurrentAmplifier(dmm.volt, 1e6) for dmm in dmms]
 currents = [item for sublist in zip(currents_X, currents_Y, currents_R, dmm_currents) for item in sublist]
 resistances = [LockinResistance(lockin, 
                                 input_imp=20, 
                                 current_scale=1e6, 
                                 voltage_scale=100) for lockin in lockins[::2]]
-voltages_X = [lockin.X for lockin in lockins[1::2]]
-voltages_Y = [lockin.Y for lockin in lockins[1::2]]
-voltages_R = [lockin.R for lockin in lockins[1::2]]
+resistances.append(LockinResistance(lockins[1]))
+
+switched_resistances = []
+for switch in ("B", "C", "D", "E"):
+    switched_resistances.extend(MBSwitchedParam(md, switch, resistance, 20) 
+        for resistance in resistances)
+switched_resistances = tuple(switched_resistances)
+
+voltages_X = [lockin.X for lockin in lockins]
+voltages_Y = [lockin.Y for lockin in lockins]
+voltages_R = [lockin.R for lockin in lockins]
 voltages = [item for sublist in zip(voltages_X, voltages_Y, voltages_R) for item in sublist]
 
 #h5fmt = hdf5_format.HDF5Format()
