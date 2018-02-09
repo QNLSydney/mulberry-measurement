@@ -7,9 +7,12 @@ Created on Tue Jan 30 15:02:06 2018
 
 import qcodes as qc
 import numpy as np
+import scipy.constants as const
+import pyqtgraph as qtplot
 from qcodes.plots.colors import color_cycle, colorscales
 import os, re
 from time import sleep
+from pathlib import Path
 
 def find_data(date, num):
     date = str(date)
@@ -113,7 +116,7 @@ def plot_all_field_sweeps_comb(data):
             plot.save(filename="{}.png".format(name))
     return plots
 
-def plot_all_field_sweeps(date, start_num):
+def plot_all_field_sweeps(date, start_num, switches=("B", "C", "D", "E")):
     """
     Plot field sweeps where data is split into multiple consecutive datasets.
     This is the case when one DataSet is taken for each switch configuration
@@ -163,3 +166,113 @@ def plot_update(date, num):
         for plot in plots:
             plot.update()
         sleep(10)
+        
+def add_label(plot, text, posn=(100, 30)):
+    qtplot = plot.win._handler._import("pyqtgraph")
+    l = qtplot.LegendItem(offset=posn)
+    l.setParentItem(plot.win.getItem(0, 0))
+    txt = qtplot.LabelItem()
+    txt.setAttr("color", "000000")
+    txt.setText(text)
+    l.layout.addItem(txt, 0, 0)
+    
+def calc_rho(field, data_xx, data_xy, curr=1e-9, width=50e-6, length=100e-6, 
+             name="Analyzed_Field_Sweep"):
+    path = "data" / Path(name)
+    
+    np_field = field.ndarray.copy()
+    np_xx = data_xx.ndarray.copy()
+    np_xy = data_xy.ndarray.copy()
+    
+    # Calculate resistances
+    rho_xy = np_xy/curr
+    # rho_xx is scaled by the width+length of the hall bar to get a sheet resistivity
+    rho_xx = (np_xx/curr) * (width/length)
+    
+    # Calculate density
+    # We want to do a fit between 1, -1 tesla as there is some extra structure
+    # above these values
+    min_ind = np.where(np.abs(np_field + 1) < 0.005)[0][0]
+    max_ind = np.where(np.abs(np_field - 1) < 0.005)[0][0]
+    min_ind, max_ind = np.min((min_ind, max_ind)), np.max((min_ind, max_ind))
+    res = np.polyfit(np_field[min_ind:max_ind], rho_xy[min_ind:max_ind], 1)
+    poly = np.poly1d(res)
+    
+    # Then the density is given by 1/(|e| dp/dB), in cm^2
+    density = 1/(const.e * res[0])
+    density *= 1e-4
+    
+    print("Density is: {:.2e} cm^-2".format(density))
+    
+    # And the calculated mobility is given by mu=1/(rho_xx |e| ns)
+    mu = 1/(rho_xx * const.e * density)
+    
+    # And let's quote the density slightly offset from 0, at 0.1T
+    mob_ind = np.where(np.abs(np_field - 0.1) < 0.005)[0][0]
+    mobility = mu[mob_ind]
+    
+    print("Mobility is: {:.2e} cm^2/V s".format(mobility))
+    
+    # And finally, let's create a new dataset. Leave location unset for now...
+    dataset = qc.DataSet(location=str(path))
+    
+    da_field = qc.DataArray(
+            array_id="Field", label="Field", unit="T", is_setpoint=True,
+            preset_data=np_field)
+    da_reduced_field = qc.DataArray(
+            array_id="Reduced_Field", label="Field", unit="T", is_setpoint=True,
+            preset_data=np_field[min_ind:max_ind])
+    da_poly = qc.DataArray(
+            array_id="Poly_Deg", label="Polynomial Degree", is_setpoint=True,
+            preset_data=list(range(2))[::-1])
+    
+    da_rho_xy = qc.DataArray(
+            array_id="Rho_XY", label="Rho XY", unit="Ohms", 
+            set_arrays=(da_field,), preset_data=rho_xy)
+    da_rho_xy_fit = qc.DataArray(
+            array_id="fit_Rho_XY", label="Rho XY", unit="Ohms",
+            set_arrays=(da_reduced_field,), preset_data=poly(np_field[min_ind:max_ind]))
+    da_rho_xy_coef = qc.DataArray(
+            array_id="coef_Rho_XY", label="Poly Coefficients",
+            set_arrays=(da_poly,), preset_data=res)
+    da_rho_xx = qc.DataArray(
+            array_id="Rho_XX", label="Rho XX", unit="Ohms",
+            set_arrays=(da_field, ), preset_data=rho_xx)
+    da_mu = qc.DataArray(
+            array_id="mu", label="Mobility", unit="cm<sup>2</sup> (V s)<sup>-1</sup>",
+            set_arrays=(da_field, ), preset_data=mu)
+    
+    dataset.add_array(da_field)
+    dataset.add_array(da_reduced_field)
+    dataset.add_array(da_poly)
+    dataset.add_array(da_rho_xy)
+    dataset.add_array(da_rho_xy_fit)
+    dataset.add_array(da_rho_xy_coef)
+    dataset.add_array(da_rho_xx)
+    dataset.add_array(da_mu)
+    
+    # Save the data
+    dataset.finalize()
+    
+    # Make some nice plots
+    # Showing Density (Rho_XY) analysis
+    plot_rho_xy = qc.QtPlot()
+    plot_rho_xy.add(dataset.Rho_XY)
+    plot_rho_xy.add(dataset.fit_Rho_XY)
+    add_label(plot_rho_xy, "Using {} current<br>".format(qtplot.siFormat(curr, suffix="A")) +
+                      "From a linear fit:<br>" +
+                      "dρ/dB = {}<br>".format(qtplot.siFormat(res[0], suffix="Ω")) +
+                      "n<sub>s</sub> = 1/(|e| dρ/dB) = {:e} cm<sup>-2</sup>".format(density),
+            posn=(100, 30))
+    plot_rho_xy.save(filename=str(path/"rho_xy.png"))
+    # Showing Mobility analysis
+    plot_mob = qc.QtPlot()
+    plot_mob.add(dataset.mu, color=color_cycle[5])
+    add_label(plot_mob, "Mobility extracted from:<br>" +
+                        "μ = 1/ρ<sub>xx</sub> |e| n<sub>s</sub>, with n<sub>s</sub>= {:.2e} cm<sup>-2</sup><br>".format(density) +
+                        "And using W = {}, L = {}".format(qtplot.siFormat(width, suffix="m"),
+                                       qtplot.siFormat(length, suffix="m")),
+                                       posn=(-30, -60))
+    plot_mob.save(filename=str(path/"mobility.png"))
+    
+    return dataset
