@@ -56,9 +56,9 @@ V_sd_params = [lockin.sine_outdc for lockin in lockins[::2]]
 V_sd = SourceDrainVoltages(V_sd_params)
 
 # Lockin voltage/current measurements
-currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[::2]]
-currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[::2]]
-currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[::2]]
+currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[0:1]]
+currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[0:1]]
+currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[0:1]]
 dmm_currents = [CurrentAmplifier(dmm.volt, 1e6) for dmm in dmms]
 currents = [item for sublist in zip(currents_X, currents_Y, currents_R) for item in sublist]
 resistances = [LockinResistance(lockin, 
@@ -72,9 +72,9 @@ for switch in ("B", "C", "D", "E"):
         for resistance in resistances)
 switched_resistances = tuple(switched_resistances)
 
-voltages_X = [lockin.X for lockin in lockins]
-voltages_Y = [lockin.Y for lockin in lockins]
-voltages_R = [lockin.R for lockin in lockins]
+voltages_X = [lockin.X for lockin in lockins[1:3]]
+voltages_Y = [lockin.Y for lockin in lockins[1:3]]
+voltages_R = [lockin.R for lockin in lockins[1:3]]
 voltages = [item for sublist in zip(voltages_X, voltages_Y, voltages_R) for item in sublist]
 
 #h5fmt = hdf5_format.HDF5Format()
