@@ -41,6 +41,35 @@ def format_plot(plot, left_axis):
     # Set the Axes
     pl.setLabel("left", left_axis[0], left_axis[1])
     pl.setLabel("bottom", "Perpendicular Field", "T")
+    
+def plot_cooldown_update(date, num):
+    plots = []
+    data = open_data(date, num)
+    
+    for lockin in range(1, 4):
+        plot = qc.QtPlot()
+        for i, switch in enumerate(("A", "B", "C", "D", "E")):
+            name = "{}_SR860_{}_X".format(switch, lockin)
+            name_res = "{}_SR860_{}_resistance".format(switch, lockin)
+            label = "V<sub>xy</sub>" if (lockin%2) == 1 else "V<sub>xx</sub>"
+            label = (label, "V")
+            tr = getattr(data, name_res, [])
+            if not tr:
+                tr = getattr(data, name, [])
+            else:
+                name = name_res
+                label = ("Resistance", "Ohms")
+            if switch == "C" and lockin == 3:
+                continue
+            plot.add(tr, name=name, color=color_cycle[((lockin-1)*5 + i) % 10])
+            plot.win.resize(600, 450)
+        plots.append(plot)
+        
+    while True:
+        data.read()
+        for plot in plots:
+            plot.update()
+        sleep(10)
 
 def plot_cooldown(datas):
     """
@@ -143,9 +172,35 @@ def plot_all_field_sweeps(date, start_num, switches=("B", "C", "D", "E")):
             plot.save(filename="{}_{}.png".format(sw, name))
     return plots
 
+def plot_update_currents(date, num):
+    plots = []
+    data = open_data(date, num)
+    
+    for lockin in range(1, 4):
+        plot = qc.QtPlot()
+        name_ithaco = "SR860_{}_X_ithaco".format(lockin)
+        name_curr = "SR860_{}_X".format(lockin)
+        label = "Current"
+        label = (label, "A")
+        tr = getattr(data, name_ithaco, [])
+        if not tr:
+            tr = getattr(data, name_curr, [])
+        else:
+            name = name_curr
+        plot.add(tr, name=name_ithaco, color=color_cycle[lockin-1])
+        format_plot(plot, label)
+        plots.append(plot)
+        
+    while True:
+        data.read()
+        for plot in plots:
+            plot.update()
+        sleep(10)
+
 def plot_update(date, num):
     plots = []
     data = open_data(date, num)
+    
     for lockin in range(1, 5):
         plot = qc.QtPlot()
         name = "SR860_{}_X".format(lockin)
@@ -161,6 +216,7 @@ def plot_update(date, num):
         plot.add(tr, name=name, color=color_cycle[lockin-1])
         format_plot(plot, label)
         plots.append(plot)
+        
     while True:
         data.read()
         for plot in plots:
