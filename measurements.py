@@ -162,22 +162,23 @@ def cooldown_loop(t, ft, resist, loops):
     loop.run()
     return data
 
-def field_sweep(ami, voltages, start, stop, points):
+def field_sweep(ami, parameters, start, stop, points):
     loop = qc.Loop(ami.field.sweep(start, stop, num=points))
-    if isinstance(voltages, Iterable):
-        loop = loop.each(*voltages)
+    if isinstance(parameters, Iterable):
+        loop = loop.each(*parameters)
     else:
-        loop = loop.each(voltages)
+        loop = loop.each(parameters)
     data = loop.get_data_set()
     loop.run()
     return data
 
-def do_field_sweeps(ami, md, pairs, params):
-    for pair in pairs:
+def do_field_sweeps(ami, md, pairs, params, start=-2, stop=2, points=1000):
+    for i, pair in enumerate(pairs):
         md.select(pair)
         sleep(10)
         delay = TimeParam(1)
-        field_sweep(ami, params + [delay], ami.field(), -ami.field(), 2000)
+        field_sweep(ami, params + [delay], start, stop, points)
+        start, stop = stop, start
     md.clear()
 
 def find_data(date, num):
