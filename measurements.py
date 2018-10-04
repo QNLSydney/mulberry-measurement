@@ -518,7 +518,6 @@ def top_gate_step_B_field_sweep_var(pairs, parameters, le_array, E_start, E_stop
         sleep(60*5)
         
         for item in test_values:        
-            yoko_t.voltage(item)
             
             h_bar = 1.0545718e-34
             e = 1.60217662e-19
@@ -532,26 +531,28 @@ def top_gate_step_B_field_sweep_var(pairs, parameters, le_array, E_start, E_stop
                 B_e = 0.010
             if B_e < 0.001:
                 B_e = 0.001
-                
-            start = B_e + 0.001
-            stop = -1*start
-            fine_range = 0.0015
+            
             step_f = 0.000005
             step_c = 0.0001
+            coarse_range = B_e + 0.001
+            fine_range = 0.0015
             
+            # Round coarse_range to the smaller multiple of step_c
+            coarse_range = int(coarse_range/step_c)*step_c
+
             # Convert from tesla to A
-            start = start*(1/0.0641)
-            stop = stop*(1/0.0641)
+            coarse_range = coarse_range*(1/0.0641)
             fine_range = fine_range*(1/0.0641)
             step_f = step_f*(1/0.0641)
             step_c = step_c*(1/0.0641)
             
             # Create Segments
-            seg1 = yoko_mag.current.sweep(start, fine_range, step=step_c)
+            seg1 = yoko_mag.current.sweep(coarse_range, fine_range, step=step_c)
             seg2 = yoko_mag.current.sweep(fine_range, -fine_range, step=step_f)
-            seg3 = yoko_mag.current.sweep(-fine_range, stop, step=step_c)
+            seg3 = yoko_mag.current.sweep(-fine_range, -coarse_range, step=step_c)
             
-            yoko_mag.current.set(start)
+            yoko_t.voltage(item)
+            yoko_mag.current.set(coarse_range)
             sleep(20)
             
             loop = qc.Loop(seg1+seg2+seg3, delay=tau)
