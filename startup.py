@@ -19,29 +19,35 @@ station = qc.Station()
 
 # Connect to all lockins
 lockins = []
-for i in range(4):
+for i in range(2):
     addr = "SR860_{}".format(i+1)
     lockins.append(SR860.SR860(addr, addr))
     station.add_component(lockins[-1])
     
-# Connect to all dmms
-dmms = []
-for i in range(2):
-    addr = "dmm_{}".format(i+1)
-    dmms.append(Agilent_34400A.Agilent_34400A(addr, addr))
-    station.add_component(dmms[-1])
+## Connect to all dmms
+#dmms = []
+#for i in range(2):
+#    addr = "dmm_{}".format(i+1)
+#    dmms.append(Agilent_34400A.Agilent_34400A(addr, addr))
+#    station.add_component(dmms[-1])
     
 # Connect to yokogawa
-#yoko_tg = GS200.GS200("yoko_tg", "yoko_tg")
-#station.add_component(yoko_tg)
+yoko_t = GS200.GS200("yoko_t", "TCPIP::192.168.0.28::INSTR")
+station.add_component(yoko_t)
 
 # Connect to mulberry
 md = MulberryDriver("md", "ASRL6::INSTR")
 station.add_component(md)
 
 # Connect to magnet backend
-ami = AMI430.AMI430("ami", "192.168.0.20", 7180)
-station.add_component(ami)
+#ami = AMI430.AMI430("ami", "192.168.0.20", 7180)
+#station.add_component(ami)
+
+# Connect to yokogawa
+yoko_mag = GS200.GS200("yoko_mag", "TCPIP::192.168.0.21::INSTR")
+station.add_component(yoko_mag)
+yoko_mag.current.step = 0.00001
+yoko_mag.current.inter_delay = 1e-2
 
 from measurements import *
 
@@ -56,21 +62,22 @@ V_sd_params = [lockin.sine_outdc for lockin in lockins[::2]]
 V_sd = SourceDrainVoltages(V_sd_params)
 
 # Lockin voltage/current measurements
-currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[::2]]
-currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[::2]]
-currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[::2]]
+currents_X = [CurrentAmplifier(lockin.X, 1e6) for lockin in lockins[2:3]]
+currents_Y = [CurrentAmplifier(lockin.Y, 1e6) for lockin in lockins[2:3]]
+currents_R = [CurrentAmplifier(lockin.R, 1e6) for lockin in lockins[2:3]]
 
-currents_X += [lockins[1].X]
-currents_Y += [lockins[1].Y]
-currents_R += [lockins[1].R]
+#currents_X =+ [lockins[0].X]
+#currents_Y =+ [lockins[0].Y]
+#currents_R =+ [lockins[0].R]
 
 currents = [item for sublist in zip(currents_X, currents_Y, currents_R) for item in sublist]
 
 resistances = [LockinResistance(lockin, 
                                 input_imp=20, 
                                 current_scale=1e6, 
-                                voltage_scale=1) for lockin in lockins[::2]]
-resistances += [LockinResistance(lockins[1])]
+                                voltage_scale=1) for lockin in lockins[2:3]]
+#resistances += [LockinResistance(lockins[1])]
+#resistances = [resistances[0], resistances[2], resistances[1]]
     
 switched_resistances = []
 for switch in ("A", "B", "C", "D", "E"):
@@ -78,10 +85,7 @@ for switch in ("A", "B", "C", "D", "E"):
         for resistance in resistances)
 switched_resistances = tuple(switched_resistances)
 
-voltages_X = [lockin.X for lockin in lockins]
-voltages_Y = [lockin.Y for lockin in lockins]
-voltages_R = [lockin.R for lockin in lockins]
+voltages_X = [VoltageAmplifier(lockin.X, 1) for lockin in lockins[0:2:1]]
+voltages_Y = [VoltageAmplifier(lockin.Y, 1) for lockin in lockins[0:2:1]]
+voltages_R = [VoltageAmplifier(lockin.R, 1) for lockin in lockins[0:2:1]]
 voltages = [item for sublist in zip(voltages_X, voltages_Y, voltages_R) for item in sublist]
-
-#h5fmt = hdf5_format.HDF5Format()
-#qc.DataSet.default_formatter = h5fmt
