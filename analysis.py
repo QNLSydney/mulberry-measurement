@@ -29,6 +29,7 @@ def find_data(date, num):
     for file in files:
         if re.match("#{:03}".format(num), file):
             return os.path.join(data_dir, file)
+    return None
         
 def open_data(date, num):
     loc = find_data(date, num)
