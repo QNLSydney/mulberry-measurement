@@ -7,6 +7,7 @@ Created on Tue Jan 30 15:02:06 2018
 
 import qcodes as qc
 import numpy as np
+import numpy.ma as ma
 import scipy.constants as const
 import pyqtgraph as qtplot
 from qcodes.plots.colors import color_cycle, colorscales
@@ -164,7 +165,7 @@ def plot_all_field_sweeps(date, start_num, switches=("B", "C", "D", "E")):
         for lockin in range(1, 5):
             plot = qc.QtPlot()
             name = "SR860_{}_X_preamp".format(lockin)
-            name_res = "Voltage".format(lockin)                                 # fyi I changed 
+            name_res = "Voltage_{}".format(lockin)                                 # fyi I changed 
             label = "V<sub>xx</sub>" if (lockin%2) == 1 else "V<sub>xy</sub>"   # some of these
             label = (label, "V")
             tr = getattr(data, name_res, [])
@@ -242,14 +243,28 @@ def add_label(plot, text, posn=(100, 30)):
     
 def calc_rho(field, data_xx, data_xy, curr=1e-9, width=50e-6, length=100e-6, 
              field_center=1, name="Analyzed_Field_Sweep"):
+    """
+    Calculate rho_xx, rho_xy from given data sweeps:
+    Parameters:
+     - field: field setpoints
+     - data_xx: V_xx DataArray
+     - data_xy: V_xy DataArray
+     - curr: Either the current as a number or as a DataArray. If a DataArray is given,
+             the trace will be averaged to extract a mean current.
+     - width/length: Width of the hall bar/distance between V_xx probes to extract
+                     a sheet resistance
+     - field_center: 
+     - name: Name to save output data
+    """
     path = "data" / Path(name)
     
     np_field = field.ndarray.copy()
     np_xx = data_xx.ndarray.copy()
     np_xy = data_xy.ndarray.copy()
     
-    curr = np.average(-1*(data.SR860_3_X_preamp.ndarray.copy())/1e6)
-    print(curr)
+    if isinstance(curr, qc.DataArray):
+        curr = np.average(-1*(curr.ndarray.copy())/1e6)
+        print(curr)
     
     # Calculate resistances
     rho_xy = np_xy/curr
@@ -586,10 +601,9 @@ def ILP_fit(date, num, current=False, width=50e-6, length=100e-6, direction=1, l
     Use with "top_gate_step_B_field_sweep" function.
     """
     # Define the fitting functions
-    e = 1.60217662e-19
-    h_bar = 1.0545718e-34
-    pi = 3.141
-     
+    e = scipy.constants.e
+    h_bar = scipy.constants.hbar
+
     B_e_mfp = h_bar/(4.*e*l_mfp**2)
         
     def func(B, B_phi, B_so, B_e=B_e_mfp):                   
@@ -829,8 +843,8 @@ def N_e_vs_mu(date, start_num, tomorrow_num, current=False, width=25e-6, lockin_
         #plt.xlim(-0.9,1.0)
         plt.show()
         
-        e = 1.60217662e-19
-        h_bar = 1.0545718e-34
+        e = const.e
+        h_bar = const.hbar
         pi = math.pi
         
         def l_e(mu, n_e):
@@ -895,8 +909,8 @@ def invert_field(date, num):
     Use with "inverse_B_field_sweep" function
     """
     # Define the fitting functions
-    e = 1.60217662e-19
-    h_bar = 1.0545718e-34
+    e = const.e
+    h_bar = const.hbar
     pi = math.pi
           
     # Import the data
@@ -963,7 +977,7 @@ def lockin_IV_plot(date, num, series_R=1.0e7):
     plt.legend()
     plt.show()    
     
-    plt.plot(I,V,'ro', label = '')
+    plt.plot(I,V_in,'ro', label = '')
     plt.xlabel('current (A)')
     plt.ylabel('V (Ohms)')
     #plt.xlim(0,3.6e+12)
@@ -971,11 +985,6 @@ def lockin_IV_plot(date, num, series_R=1.0e7):
     plt.legend()
     plt.show()
     
-       
-    
-    
-def Dingle(date,num):
-    return 
     
     
 def multi_plotter():
@@ -1045,15 +1054,9 @@ def wl_scan_2d_plot(date, start, num_sweeps):
     yoko_array = np.zeros((num_sweeps,))
     data_arrays = []
     field_arrays = []
-    field_arrays.append(np.array(data.ami_field_set))
-    data_arrays.append(np.array(data.SR860_1_X_preamp))
-    yoko_array[0] = data.metadata['station']['instruments']['yoko_t']['parameters']['voltage']['value']
     
     offs = 0
-    vmin = float('inf')
-    vmax = float('-inf')
-    for i in range(1, num_sweeps):
-        print(date, start+i-offs)
+    for i in range(num_sweeps):
         data = open_data(date, start+i-offs)
         
         if data is None:
@@ -1066,20 +1069,59 @@ def wl_scan_2d_plot(date, start, num_sweeps):
                 print(f"Error opening data at: {date}, {start+i-offs}")
                 break
         
-        data_array = np.array(data.SR860_1_X_preamp)/(np.array(data.SR860_3_X_preamp).mean()*1e-6)
+        data_array = np.array(data.SR860_1_X_preamp)/(np.array(data.SR860_2_X_preamp)*1e-6)
         data_arrays.append(data_array)
-        field_arrays.append(np.array(data.ami_field_set))
+        field_arrays.append(np.array(data.yoko_mag_current_set)/15.600624025)
         yoko_array[i] = data.metadata['station']['instruments']['yoko_t']['parameters']['voltage']['value']
-        vmin = min(vmin, data.SR860_1_X_preamp.min())
-        vmax = max(vmax, data.SR860_1_X_preamp.max())
+    
+    fine_field_array = np.linspace(0.0015, -0.0015, 601)
+    fine_data_array = np.zeros((601, num_sweeps))
+    
+    coarse_field_array = np.linspace(0.011, -0.011, 221)
+    coarse_data_array = np.full((221, num_sweeps), float('NaN'))
+    
+    for i, (field, val) in enumerate(zip(field_arrays, data_arrays)):
+        numpoints = field.size
+        midindex = (numpoints-600)//2
+        startind = np.where(np.isclose(field[0], coarse_field_array))[0][0]
+        
+        fine_data_array[:,i] = val[midindex:midindex + 601]
+        coarse_data_array[startind:startind+midindex,i] = val[:midindex]
+        coarse_data_array[125:125+midindex,i] = val[midindex + 601:]
+        
+        assert all(np.isclose(fine_field_array, field[midindex:midindex + 601]))
+        assert all(np.isclose(coarse_field_array[startind:startind+midindex], field[:midindex]))
+        assert all(np.isclose(coarse_field_array[125:125+midindex], field[midindex + 601:]))
+        
+        dmin = min(fine_data_array[:,i].min(), np.nanmin(coarse_data_array[:,i]))
+        dmax = max(fine_data_array[:,i].max(), np.nanmax(coarse_data_array[:,i]))
+        fine_data_array[:,i] = (fine_data_array[:,i] - dmin)/(dmax-dmin)
+        coarse_data_array[:,i] = (coarse_data_array[:,i] - dmin)/(dmax-dmin)
+        
+        #ax.scatter(tg_volt_arr, field, c=val, s=5, cmap='plasma')
+    masked_coarse_data_array = ma.masked_invalid(coarse_data_array)
+    
+    # Figure out corrected field/voltage arrays
+    x_step = yoko_array[1] - yoko_array[0]
+    p_voltage_array = np.arange(yoko_array[0] - (x_step/2), 
+                                yoko_array[-1] + 2*(x_step/2), 
+                                x_step)
+    pc_field_array = np.arange(0.011 + 0.0001/2,
+                               -0.011 - 2*0.0001/2,
+                               -0.0001)
+    pf_field_array = np.arange(0.0015 + 0.000005/2,
+                               -0.0015 - 2*0.000005/2,
+                               -0.000005)
+    assert p_voltage_array.size == num_sweeps+1
     
     fig, ax = plt.subplots()
     ax.set_xlabel("TG Voltage (V)")
     ax.set_ylabel("Field")
-    
-    for tg_volt, field, val in zip(yoko_array, field_arrays, data_arrays):
-        tg_volt_arr = np.full((field.shape[0],), tg_volt)
-        ax.scatter(tg_volt_arr, field, c=val, s=1, cmap='plasma')
+    ax.pcolormesh(p_voltage_array, pc_field_array, masked_coarse_data_array, cmap='plasma')
+    ax.pcolormesh(p_voltage_array, pf_field_array, fine_data_array, cmap='plasma')
+    #ax.set_xlim(min(yoko_array), max(yoko_array))
+    ax.set_ylim(-0.011, 0.011)
+    fig.tight_layout()
     plt.show()
     
     return (yoko_array, field_arrays, data_arrays)
