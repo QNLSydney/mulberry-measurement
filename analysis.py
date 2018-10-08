@@ -40,6 +40,28 @@ def open_data(date, num):
     data.read()
     data.read_metadata()
     return data
+
+def open_data_sequence(date, start_num, num_sweeps):
+    """
+    Open a series of data that may have been taken over multiple days
+    """
+
+    data_list = []
+    offs = 0
+    for i in range(num_sweeps):
+        data = open_data(date, start_num+i-offs)
+        
+        if data is None:
+            date = datetime.datetime.strptime(date, "%Y-%m-%d")
+            date += datetime.timedelta(days=1)
+            date = date.strftime("%Y-%m-%d")
+            offs = start_num+i-1
+            data = open_data(date, start_num+i-offs)
+            if data is None:
+                print(f"Error opening data at: {date}, {start_num+i-offs}")
+                break
+        data_list.append(data)
+    return data_list
         
 def format_plot(plot, left_axis):
     # First, let's resize the window
@@ -1049,26 +1071,20 @@ def rxx_rxy_plot(date, num,  sw, loc, width=50e-6):
     #plt.savefig(f"field_sweep_{date}_{num}.png")
     
 def wl_scan_2d_plot(date, start, num_sweeps):
-    data = open_data(date, start)
-    
+    """
+    Plot weak localization scans
+
+    Note: this version of the function requires a fixed sweep range, split
+    between coarse and fine ranges. This was true for sweeps run after 2018-10-05
+    (66bca5a)
+    """
+    # Create arrays to hold data
     yoko_array = np.zeros((num_sweeps,))
     data_arrays = []
     field_arrays = []
     
-    offs = 0
-    for i in range(num_sweeps):
-        data = open_data(date, start+i-offs)
-        
-        if data is None:
-            date = datetime.datetime.strptime(date, "%Y-%m-%d")
-            date += datetime.timedelta(days=1)
-            date = date.strftime("%Y-%m-%d")
-            offs = start+i-1
-            data = open_data(date, start+i-offs)
-            if data is None:
-                print(f"Error opening data at: {date}, {start+i-offs}")
-                break
-        
+    # Load data arrays
+    for i, data in enumerate(open_data_sequence(date, start, num_sweeps)):
         data_array = np.array(data.SR860_1_X_preamp)/(np.array(data.SR860_2_X_preamp)*1e-6)
         data_arrays.append(data_array)
         field_arrays.append(np.array(data.yoko_mag_current_set)/15.600624025)
