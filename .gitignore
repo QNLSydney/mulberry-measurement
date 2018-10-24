@@ -135,3 +135,9 @@ data/
 
 # Output figures
 *.png
+
+# Output data
+experiments.db
+
+# Temporary/hidden crap
+Thumbs.db
