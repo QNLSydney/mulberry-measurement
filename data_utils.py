@@ -1,5 +1,5 @@
 import re
-import os, os.path
+import os.path
 import datetime
 
 import qcodes as qc
