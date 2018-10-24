@@ -807,7 +807,7 @@ def rxx_rxy_plot(date, num, loc="UNK", width=50e-6):
     I = np.array(data.SR860_3_X_preamp) * 1e-6
     Vxx = np.array(data.SR860_1_X_preamp)
     Vxy = np.array(data.SR860_2_X_preamp)
-    sw = instr_param_val(data, 'md', 'select')
+    sw = inst_param_val(data, 'md', 'select')
 
     I_mean = I.mean()
     Rxx = Vxx/I
@@ -865,7 +865,7 @@ def wl_scan_2d_plot(date, start, num_sweeps):
         data_array = np.array(data.SR860_1_X_preamp)/(np.array(data.SR860_2_X_preamp)*1e-6)
         data_arrays.append(data_array)
         field_arrays.append(np.array(data.yoko_mag_current_set)/15.600624025)
-        yoko_array[i] = instr_param_val(data, 'yoko_t', 'voltage')
+        yoko_array[i] = inst_param_val(data, 'yoko_t', 'voltage')
 
     fine_field_array = np.linspace(0.0015, -0.0015, 601)
     fine_data_array = np.zeros((601, num_sweeps))
