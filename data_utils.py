@@ -30,7 +30,7 @@ def open_data(date, num):
     data.read_metadata()
     return data
 
-def open_data_sequence(date, start_num, num_sweeps):
+def open_data_sequence(date, start_num, num_sweeps, ignore=()):
     """
     Open a series of data that may have been taken over multiple days
 
@@ -51,6 +51,10 @@ def open_data_sequence(date, start_num, num_sweeps):
             if data is None:
                 print(f"Error opening data at: {date}, {start_num+i-offs}")
                 break
+
+        if i in ignore:
+            continue
+
         data_list.append(data)
     return data_list
 
